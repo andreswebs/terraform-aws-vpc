@@ -73,7 +73,7 @@ variable "azs" {
 }
 
 variable "default_max_azs" {
-  description = "Default maximum number of availability zones selected in case none as specified"
+  description = "Default maximum number of availability zones selected in case none are specified"
   type        = number
   default     = 3
 }
