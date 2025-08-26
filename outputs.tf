@@ -1,6 +1,6 @@
 output "vpc" {
   description = "The `aws_vpc` resource"
-  value       = aws_vpc.this
+  value       = var.create_vpc ? aws_vpc.this[0] : data.aws_vpc.this
 }
 
 output "dhcp_options" {
