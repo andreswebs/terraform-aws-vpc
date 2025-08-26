@@ -7,6 +7,18 @@ variable "name" {
   type        = string
 }
 
+variable "create_vpc" {
+  description = "Create the VPC?"
+  type        = bool
+  default     = true
+}
+
+variable "existing_vpc_id" {
+  description = "(Optional) Existing VPC ID, used if `create_vpc` is set to `false`"
+  type        = string
+  default     = null
+}
+
 variable "cidr_block" {
   description = "The IPv4 CIDR block for the VPC"
   type        = string
@@ -60,11 +72,18 @@ variable "azs" {
   default     = []
 }
 
+variable "default_max_azs" {
+  description = "Default maximum number of availability zones selected in case none as specified"
+  type        = number
+  default     = 3
+}
+
 ## See: https://docs.aws.amazon.com/ram/latest/userguide/working-with-az-ids.html
 variable "az_indexes" {
   description = "Comma-separated list of AZ ID indexes to select; use this when you want to enforce which AZ IDs to use"
   type        = string
   default     = null
+
   validation {
     condition     = var.az_indexes == "" || var.az_indexes == null || can(regex("^\\d,\\d(?:,\\d)?$", var.az_indexes))
     error_message = "The input must be a comma-separated list of three single-digit numbers [0-9] in the format: `x,y,z`."
@@ -181,6 +200,12 @@ variable "public_route_table_tags" {
   default     = {}
 }
 
+variable "public_route_table_name" {
+  description = "Explicit value to use in the Name tag on public route table(s). If empty, Name tags are generated"
+  type        = string
+  default     = null
+}
+
 ################################################################################
 # Public Network ACLs
 ################################################################################
@@ -244,7 +269,7 @@ variable "private_subnet_enable_resource_name_dns_a_record_on_launch" {
 }
 
 variable "private_subnet_private_dns_hostname_type_on_launch" {
-  description = "The type of hostnames to assign to instances in the subnet at launch. For IPv6-only subnets, an instance DNS name must be based on the instance ID. For dual-stack and IPv4-only subnets, you can specify whether DNS names use the instance IPv4 address or the instance ID. Valid values: `ip-name`, `resource-name`"
+  description = "The type of hostnames to assign to instances in the subnet at launch. Valid values: `ip-name`, `resource-name`"
   type        = string
   default     = null
 }

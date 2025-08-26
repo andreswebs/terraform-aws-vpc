@@ -18,9 +18,29 @@ output "public_subnet" {
   value       = aws_subnet.public
 }
 
+output "public_subnet_map" {
+  description = "Map of names to public `aws_subnet` resources"
+  value       = { for s in aws_subnet.public : s.tags.Name => s }
+}
+
+output "public_subnet_ids" {
+  description = "List of public subnet IDs"
+  value       = [for s in aws_subnet.public : s.id]
+}
+
 output "private_subnet" {
   description = "List of private `aws_subnet` resources"
   value       = aws_subnet.private
+}
+
+output "private_subnet_map" {
+  description = "Map of names to private `aws_subnet` resources"
+  value       = { for s in aws_subnet.private : s.tags.Name => s }
+}
+
+output "private_subnet_ids" {
+  description = "List of private subnet IDs"
+  value       = [for s in aws_subnet.private : s.id]
 }
 
 output "network_acl" {

@@ -16,6 +16,8 @@ locals {
 ################################################################################
 
 resource "aws_vpc" "this" {
+  count = var.create_vpc ? 1 : 0
+
   cidr_block = var.cidr_block
 
   instance_tenancy                     = var.instance_tenancy
@@ -30,8 +32,13 @@ resource "aws_vpc" "this" {
   )
 }
 
+data "aws_vpc" "this" {
+  count = var.create_vpc ? 0 : 1
+  id    = var.existing_vpc_id
+}
+
 locals {
-  raw_vpc_id = aws_vpc.this.id
+  raw_vpc_id = var.create_vpc ? aws_vpc.this[0].id : data.aws_vpc.this[0].id
 }
 
 resource "aws_vpc_ipv4_cidr_block_association" "this" {
@@ -42,7 +49,7 @@ resource "aws_vpc_ipv4_cidr_block_association" "this" {
 
 locals {
   # Use `local.vpc_id` to give a hint to Terraform that subnets should be deleted before secondary CIDR blocks can be free
-  vpc_id = try(aws_vpc_ipv4_cidr_block_association.this[0].vpc_id, aws_vpc.this.id, "")
+  vpc_id = try(aws_vpc_ipv4_cidr_block_association.this[0].vpc_id, local.raw_vpc_id, "")
 }
 
 ################################################################################
@@ -50,7 +57,7 @@ locals {
 ################################################################################
 
 resource "aws_vpc_dhcp_options" "this" {
-  count = var.enable_dhcp_options ? 1 : 0
+  count = var.create_vpc && var.enable_dhcp_options ? 1 : 0
 
   domain_name          = var.dhcp_options_domain_name
   domain_name_servers  = var.dhcp_options_domain_name_servers
@@ -66,7 +73,7 @@ resource "aws_vpc_dhcp_options" "this" {
 }
 
 resource "aws_vpc_dhcp_options_association" "this" {
-  count = var.enable_dhcp_options ? 1 : 0
+  count = var.create_vpc && var.enable_dhcp_options ? 1 : 0
 
   vpc_id          = local.vpc_id
   dhcp_options_id = aws_vpc_dhcp_options.this[0].id
@@ -77,7 +84,7 @@ resource "aws_vpc_dhcp_options_association" "this" {
 ################################################################################
 
 resource "aws_internet_gateway" "this" {
-  count = local.create_public_subnets && var.create_igw ? 1 : 0
+  count = var.create_vpc && var.create_igw ? 1 : 0
 
   vpc_id = local.vpc_id
 
@@ -93,12 +100,12 @@ resource "aws_internet_gateway" "this" {
 ################################################################################
 
 locals {
-  nat_gateway_count = var.single_nat_gateway ? 1 : var.one_nat_gateway_per_az ? length(local.azs) : local.max_subnet_length
+  nat_gateway_count = local.create_public_subnets && var.enable_nat_gateway ? var.single_nat_gateway ? 1 : var.one_nat_gateway_per_az ? length(local.azs) : local.max_subnet_length : 0
   nat_gateway_ips   = var.reuse_nat_ips ? var.external_nat_ip_ids : aws_eip.nat[*].id
 }
 
 resource "aws_eip" "nat" {
-  count = var.enable_nat_gateway && !var.reuse_nat_ips ? local.nat_gateway_count : 0
+  count = !var.reuse_nat_ips ? local.nat_gateway_count : 0
 
   domain = "vpc"
 
@@ -117,12 +124,13 @@ resource "aws_eip" "nat" {
 }
 
 resource "aws_nat_gateway" "this" {
-  count = var.enable_nat_gateway ? local.nat_gateway_count : 0
+  count = local.nat_gateway_count
 
   allocation_id = element(
     local.nat_gateway_ips,
     var.single_nat_gateway ? 0 : count.index,
   )
+
   subnet_id = element(
     aws_subnet.public[*].id,
     var.single_nat_gateway ? 0 : count.index,
@@ -143,7 +151,7 @@ resource "aws_nat_gateway" "this" {
 }
 
 resource "aws_route" "private_nat_gateway" {
-  count = var.enable_nat_gateway && var.create_private_nat_gateway_route ? local.nat_gateway_count : 0
+  count = var.create_private_nat_gateway_route ? local.nat_gateway_count : 0
 
   route_table_id         = element(aws_route_table.private[*].id, count.index)
   destination_cidr_block = var.nat_gateway_destination_cidr_block
@@ -159,11 +167,11 @@ resource "aws_route" "private_nat_gateway" {
 ################################################################################
 
 resource "aws_subnet" "public" {
-  count = local.create_public_subnets && (!var.one_nat_gateway_per_az || local.len_public_subnets >= length(local.azs)) ? local.len_public_subnets : 0
+  count = local.create_public_subnets ? local.len_public_subnets : 0
 
-  availability_zone                           = length(regexall("^[a-z]{2}-", element(local.azs, count.index))) > 0 ? element(local.azs, count.index) : null
-  availability_zone_id                        = length(regexall("^[a-z]{2}-", element(local.azs, count.index))) == 0 ? element(local.azs, count.index) : null
-  cidr_block                                  = element(concat(var.public_subnet_cidr_blocks, [""]), count.index)
+  availability_zone                           = length(regexall("^[a-z]{2}-", element(local.azs, count.index))) > 0 ? element(local.azs, count.index % length(local.azs)) : null
+  availability_zone_id                        = length(regexall("^[a-z]{2}-", element(local.azs, count.index))) == 0 ? element(local.azs, count.index % length(local.azs)) : null
+  cidr_block                                  = element(var.public_subnet_cidr_blocks, count.index)
   enable_resource_name_dns_a_record_on_launch = var.public_subnet_enable_resource_name_dns_a_record_on_launch
   map_public_ip_on_launch                     = var.map_public_ip_on_launch
   private_dns_hostname_type_on_launch         = var.public_subnet_private_dns_hostname_type_on_launch
@@ -184,6 +192,7 @@ resource "aws_subnet" "public" {
 
 locals {
   num_public_route_tables = var.create_multiple_public_route_tables ? local.len_public_subnets : 1
+  public_route_table_name = var.public_route_table_name != "" && var.public_route_table_name != null ? var.public_route_table_name : "${var.name}-${var.public_subnet_suffix}"
 }
 
 resource "aws_route_table" "public" {
@@ -194,9 +203,9 @@ resource "aws_route_table" "public" {
   tags = merge(
     {
       "Name" = var.create_multiple_public_route_tables ? format(
-        "${var.name}-${var.public_subnet_suffix}-%s",
+        "${local.public_route_table_name}-%s",
         element(local.azs, count.index),
-      ) : "${var.name}-${var.public_subnet_suffix}"
+      ) : "${local.public_route_table_name}"
     },
     var.tags,
     var.public_route_table_tags,
@@ -278,8 +287,8 @@ resource "aws_network_acl_rule" "public_outbound" {
 resource "aws_subnet" "private" {
   count = local.create_private_subnets ? local.len_private_subnets : 0
 
-  availability_zone                           = length(regexall("^[a-z]{2}-", element(local.azs, count.index))) > 0 ? element(local.azs, count.index) : null
-  availability_zone_id                        = length(regexall("^[a-z]{2}-", element(local.azs, count.index))) == 0 ? element(local.azs, count.index) : null
+  availability_zone                           = length(regexall("^[a-z]{2}-", element(local.azs, count.index))) > 0 ? element(local.azs, count.index % length(local.azs)) : null
+  availability_zone_id                        = length(regexall("^[a-z]{2}-", element(local.azs, count.index))) == 0 ? element(local.azs, count.index % length(local.azs)) : null
   cidr_block                                  = element(concat(var.private_subnet_cidr_blocks, [""]), count.index)
   enable_resource_name_dns_a_record_on_launch = var.private_subnet_enable_resource_name_dns_a_record_on_launch
   private_dns_hostname_type_on_launch         = var.private_subnet_private_dns_hostname_type_on_launch
@@ -300,7 +309,9 @@ resource "aws_subnet" "private" {
 
 # There are as many routing tables as the number of NAT gateways
 resource "aws_route_table" "private" {
-  count = local.create_private_subnets && local.max_subnet_length > 0 ? local.nat_gateway_count : 0
+  count = local.create_private_subnets ? local.nat_gateway_count : 0
+
+  depends_on = [aws_subnet.private]
 
   vpc_id = local.vpc_id
 
@@ -317,7 +328,7 @@ resource "aws_route_table" "private" {
 }
 
 resource "aws_route_table_association" "private" {
-  count = local.create_private_subnets ? local.len_private_subnets : 0
+  count = local.create_private_subnets && var.create_private_nat_gateway_route && local.nat_gateway_count > 0 ? local.len_private_subnets : 0
 
   subnet_id = element(aws_subnet.private[*].id, count.index)
   route_table_id = element(
