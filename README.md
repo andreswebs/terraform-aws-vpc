@@ -34,6 +34,8 @@ module "network" {
 | <a name="input_create_igw"></a> [create\_igw](#input\_create\_igw) | Controls if an Internet Gateway is created for public subnets and the related routes that connect them | `bool` | `true` | no |
 | <a name="input_create_multiple_public_route_tables"></a> [create\_multiple\_public\_route\_tables](#input\_create\_multiple\_public\_route\_tables) | Indicates whether to create a separate route table for each public subnet. Default: `false` | `bool` | `true` | no |
 | <a name="input_create_private_nat_gateway_route"></a> [create\_private\_nat\_gateway\_route](#input\_create\_private\_nat\_gateway\_route) | Controls if a nat gateway route should be created to give internet access to the private subnets | `bool` | `true` | no |
+| <a name="input_create_vpc"></a> [create\_vpc](#input\_create\_vpc) | Create the VPC? | `bool` | `true` | no |
+| <a name="input_default_max_azs"></a> [default\_max\_azs](#input\_default\_max\_azs) | Default maximum number of availability zones selected in case none as specified | `number` | `3` | no |
 | <a name="input_dhcp_options_domain_name"></a> [dhcp\_options\_domain\_name](#input\_dhcp\_options\_domain\_name) | Specifies DNS name for DHCP options set (requires enable\_dhcp\_options set to true) | `string` | `""` | no |
 | <a name="input_dhcp_options_domain_name_servers"></a> [dhcp\_options\_domain\_name\_servers](#input\_dhcp\_options\_domain\_name\_servers) | Specify a list of DNS server addresses for DHCP options set, default to AWS provided (requires enable\_dhcp\_options set to true) | `list(string)` | <pre>[<br/>  "AmazonProvidedDNS"<br/>]</pre> | no |
 | <a name="input_dhcp_options_netbios_name_servers"></a> [dhcp\_options\_netbios\_name\_servers](#input\_dhcp\_options\_netbios\_name\_servers) | Specify a list of netbios servers for DHCP options set (requires enable\_dhcp\_options set to true) | `list(string)` | `[]` | no |
@@ -45,6 +47,7 @@ module "network" {
 | <a name="input_enable_dns_support"></a> [enable\_dns\_support](#input\_enable\_dns\_support) | Should be true to enable DNS support in the VPC | `bool` | `true` | no |
 | <a name="input_enable_nat_gateway"></a> [enable\_nat\_gateway](#input\_enable\_nat\_gateway) | Should be true if you want to provision a NAT Gateway for private networks; number of gateways depends on other variables | `bool` | `true` | no |
 | <a name="input_enable_network_address_usage_metrics"></a> [enable\_network\_address\_usage\_metrics](#input\_enable\_network\_address\_usage\_metrics) | Determines whether network address usage metrics are enabled for the VPC | `bool` | `true` | no |
+| <a name="input_existing_vpc_id"></a> [existing\_vpc\_id](#input\_existing\_vpc\_id) | (Optional) Existing VPC ID, used if `create_vpc` is set to `false` | `string` | `null` | no |
 | <a name="input_external_nat_ip_ids"></a> [external\_nat\_ip\_ids](#input\_external\_nat\_ip\_ids) | List of EIP IDs to be assigned to the NAT Gateways (used in combination with `reuse_nat_ips`) | `list(string)` | `[]` | no |
 | <a name="input_external_nat_ips"></a> [external\_nat\_ips](#input\_external\_nat\_ips) | List of EIPs to be used for `nat_public_ips` output (used in combination with `reuse_nat_ips` and `external_nat_ip_ids`) | `list(string)` | `[]` | no |
 | <a name="input_igw_tags"></a> [igw\_tags](#input\_igw\_tags) | Additional tags for the internet gateway | `map(string)` | `{}` | no |
@@ -63,7 +66,7 @@ module "network" {
 | <a name="input_private_subnet_cidr_blocks"></a> [private\_subnet\_cidr\_blocks](#input\_private\_subnet\_cidr\_blocks) | List of private subnet CIDR blocks | `list(string)` | `[]` | no |
 | <a name="input_private_subnet_enable_resource_name_dns_a_record_on_launch"></a> [private\_subnet\_enable\_resource\_name\_dns\_a\_record\_on\_launch](#input\_private\_subnet\_enable\_resource\_name\_dns\_a\_record\_on\_launch) | Indicates whether to respond to DNS queries for instance hostnames with DNS A records. Default: `false` | `bool` | `false` | no |
 | <a name="input_private_subnet_names"></a> [private\_subnet\_names](#input\_private\_subnet\_names) | Explicit values to use in the Name tag on private subnets. If empty, Name tags are generated | `list(string)` | `[]` | no |
-| <a name="input_private_subnet_private_dns_hostname_type_on_launch"></a> [private\_subnet\_private\_dns\_hostname\_type\_on\_launch](#input\_private\_subnet\_private\_dns\_hostname\_type\_on\_launch) | The type of hostnames to assign to instances in the subnet at launch. For IPv6-only subnets, an instance DNS name must be based on the instance ID. For dual-stack and IPv4-only subnets, you can specify whether DNS names use the instance IPv4 address or the instance ID. Valid values: `ip-name`, `resource-name` | `string` | `null` | no |
+| <a name="input_private_subnet_private_dns_hostname_type_on_launch"></a> [private\_subnet\_private\_dns\_hostname\_type\_on\_launch](#input\_private\_subnet\_private\_dns\_hostname\_type\_on\_launch) | The type of hostnames to assign to instances in the subnet at launch. Valid values: `ip-name`, `resource-name` | `string` | `null` | no |
 | <a name="input_private_subnet_suffix"></a> [private\_subnet\_suffix](#input\_private\_subnet\_suffix) | Suffix to append to private subnets name | `string` | `"private"` | no |
 | <a name="input_private_subnet_tags"></a> [private\_subnet\_tags](#input\_private\_subnet\_tags) | Additional tags for the private subnets | `map(string)` | `{}` | no |
 | <a name="input_private_subnet_tags_per_az"></a> [private\_subnet\_tags\_per\_az](#input\_private\_subnet\_tags\_per\_az) | Additional tags for the private subnets where the primary key is the AZ | `map(map(string))` | `{}` | no |
@@ -71,6 +74,7 @@ module "network" {
 | <a name="input_public_dedicated_network_acl"></a> [public\_dedicated\_network\_acl](#input\_public\_dedicated\_network\_acl) | Whether to use dedicated network ACL (not default) and custom rules for public subnets | `bool` | `false` | no |
 | <a name="input_public_inbound_acl_rules"></a> [public\_inbound\_acl\_rules](#input\_public\_inbound\_acl\_rules) | Public subnets inbound network ACLs | `list(map(string))` | <pre>[<br/>  {<br/>    "cidr_block": "0.0.0.0/0",<br/>    "from_port": 0,<br/>    "protocol": "-1",<br/>    "rule_action": "allow",<br/>    "rule_number": 100,<br/>    "to_port": 0<br/>  }<br/>]</pre> | no |
 | <a name="input_public_outbound_acl_rules"></a> [public\_outbound\_acl\_rules](#input\_public\_outbound\_acl\_rules) | Public subnets outbound network ACLs | `list(map(string))` | <pre>[<br/>  {<br/>    "cidr_block": "0.0.0.0/0",<br/>    "from_port": 0,<br/>    "protocol": "-1",<br/>    "rule_action": "allow",<br/>    "rule_number": 100,<br/>    "to_port": 0<br/>  }<br/>]</pre> | no |
+| <a name="input_public_route_table_name"></a> [public\_route\_table\_name](#input\_public\_route\_table\_name) | Explicit value to use in the Name tag on public route table(s). If empty, Name tags are generated | `string` | `null` | no |
 | <a name="input_public_route_table_tags"></a> [public\_route\_table\_tags](#input\_public\_route\_table\_tags) | Additional tags for the public route tables | `map(string)` | `{}` | no |
 | <a name="input_public_subnet_cidr_blocks"></a> [public\_subnet\_cidr\_blocks](#input\_public\_subnet\_cidr\_blocks) | List of public subnet CIDR blocks | `list(string)` | `[]` | no |
 | <a name="input_public_subnet_enable_resource_name_dns_a_record_on_launch"></a> [public\_subnet\_enable\_resource\_name\_dns\_a\_record\_on\_launch](#input\_public\_subnet\_enable\_resource\_name\_dns\_a\_record\_on\_launch) | Indicates whether to respond to DNS queries for instance hostnames with DNS A records. Default: `false` | `bool` | `false` | no |
@@ -101,7 +105,11 @@ No modules.
 | <a name="output_nat_public_ip"></a> [nat\_public\_ip](#output\_nat\_public\_ip) | List of public Elastic IPs assigned to the NAT Gateway(s) |
 | <a name="output_network_acl"></a> [network\_acl](#output\_network\_acl) | Object containing the private and public `aws_network_acl` resources |
 | <a name="output_private_subnet"></a> [private\_subnet](#output\_private\_subnet) | List of private `aws_subnet` resources |
+| <a name="output_private_subnet_ids"></a> [private\_subnet\_ids](#output\_private\_subnet\_ids) | List of private subnet IDs |
+| <a name="output_private_subnet_map"></a> [private\_subnet\_map](#output\_private\_subnet\_map) | Map of names to private `aws_subnet` resources |
 | <a name="output_public_subnet"></a> [public\_subnet](#output\_public\_subnet) | List of public `aws_subnet` resources |
+| <a name="output_public_subnet_ids"></a> [public\_subnet\_ids](#output\_public\_subnet\_ids) | List of public subnet IDs |
+| <a name="output_public_subnet_map"></a> [public\_subnet\_map](#output\_public\_subnet\_map) | Map of names to public `aws_subnet` resources |
 | <a name="output_vpc"></a> [vpc](#output\_vpc) | The `aws_vpc` resource |
 
 ## Providers
@@ -114,7 +122,7 @@ No modules.
 
 | Name | Version |
 |------|---------|
-| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | ~> 1.10 |
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | ~> 1.11 |
 
 ## Resources
 
@@ -142,6 +150,7 @@ No modules.
 | [aws_vpc_dhcp_options_association.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/vpc_dhcp_options_association) | resource |
 | [aws_vpc_ipv4_cidr_block_association.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/vpc_ipv4_cidr_block_association) | resource |
 | [aws_availability_zones.available](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/availability_zones) | data source |
+| [aws_vpc.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/vpc) | data source |
 
 [//]: # (END_TF_DOCS)
 
@@ -151,4 +160,4 @@ No modules.
 
 ## License
 
-This project is licensed under the [Unlicense](UNLICENSE.md).
+This project is licensed under the [Unlicense](UNLICENSE).
